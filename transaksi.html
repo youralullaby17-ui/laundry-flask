@@ -1,0 +1,12 @@
+<h2>Daftar Transaksi</h2>
+<table border="1">
+  <tr>
+    <th>Nama</th><th>Layanan</th><th>Berat</th><th>Total</th><th>Status</th><th>Aksi</th>
+  </tr>
+  {% for t in data %}
+  <tr>
+    <td>{{ t[1] }}</td><td>{{ t[2] }}</td><td>{{ t[3] }} kg</td><td>Rp {{ t[4] }}</td><td>{{ t[5] }}</td>
+    <td><a href="/update/{{ t[0] }}">Update</a></td>
+  </tr>
+  {% endfor %}
+</table>
