@@ -1,112 +1,73 @@
 
-
-
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, url_for
 import sqlite3
-from datetime import datetime
 
-app = Flask(__name__, template_folder="templates")
+app = Flask(__name__)
 
-def get_db():
-    conn = sqlite3.connect("laundry.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+# Inisialisasi database
+def init_db():
+    conn = sqlite3.connect('laundry.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS transaksi (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nama TEXT,
+                    layanan TEXT,
+                    berat REAL,
+                    total REAL,
+                    status TEXT
+                )''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 @app.route('/')
 def index():
-    return render_template("index.html")
+    return render_template('index.html')
 
 @app.route('/simpan', methods=['POST'])
 def simpan():
-    conn = get_db()
-    cursor = conn.cursor()
-
     nama = request.form['nama']
-    nomor = request.form.get('nomor', '')
-    berat = float(request.form.get('berat', 0))
-    layanan = request.form.get('layanan', 'Cuci kering 3 hari')
-    harga = int(request.form.get('harga', 7000))
-    diskon = float(request.form.get('diskon', 0))
-    status_bayar = request.form.get('status_bayar', 'Belum Lunas')
-    status_ambil = request.form.get('status_ambil', 'Belum Diambil')
+    layanan = request.form['layanan']
+    berat = float(request.form['berat'])
+    harga_per_kg = 7000 if layanan == 'Cuci Kering' else 10000
+    total = berat * harga_per_kg
+    status = 'Belum Dicuci'
 
-    subtotal = harga * berat
-    diskon_rp = subtotal * (diskon / 100)
-    total = subtotal - diskon_rp
-    kasbon = 0 if status_bayar == "Sudah Lunas" else total
-    tanggal_pesan = datetime.now().strftime("%d-%m-%Y %H:%M")
-    tanggal_dibayar = tanggal_pesan if status_bayar == "Sudah Lunas" else "-"
-    tanggal_diambil = tanggal_pesan if status_ambil == "Sudah Diambil" else "-"
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transaksi (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nama TEXT,
-            nomor TEXT,
-            berat REAL,
-            layanan TEXT,
-            harga_per_kg INTEGER,
-            diskon_persen REAL,
-            total REAL,
-            kasbon REAL,
-            status_pembayaran TEXT,
-            status_pengambilan TEXT,
-            tanggal_pesan TEXT,
-            tanggal_dibayar TEXT,
-            tanggal_diambil TEXT
-        )
-    """)
-
-    cursor.execute("""
-        INSERT INTO transaksi (
-            nama, nomor, berat, layanan, harga_per_kg, diskon_persen, total, kasbon,
-            status_pembayaran, status_pengambilan, tanggal_pesan, tanggal_dibayar, tanggal_diambil
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (nama, nomor, berat, layanan, harga, diskon, total, kasbon,
-          status_bayar, status_ambil, tanggal_pesan, tanggal_dibayar, tanggal_diambil))
+    conn = sqlite3.connect('laundry.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO transaksi (nama, layanan, berat, total, status) VALUES (?, ?, ?, ?, ?)",
+              (nama, layanan, berat, total, status))
     conn.commit()
-    return redirect('/transaksi')
+    conn.close()
+    return redirect(url_for('transaksi'))
 
 @app.route('/transaksi')
 def transaksi():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM transaksi")
-    data = cursor.fetchall()
+    conn = sqlite3.connect('laundry.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM transaksi")
+    data = c.fetchall()
+    conn.close()
+    return render_template('transaksi.html', data=data)
 
-    hari_ini = datetime.now().strftime("%d-%m-%Y")
-    belum_lunas = []
-    lunas_hari_ini = []
-    lunas_lama = []
-
-    for row in data:
-        if row['status_pembayaran'] == "Belum Lunas":
-            belum_lunas.append(row)
-        elif row['status_pembayaran'] == "Sudah Lunas":
-            if row['tanggal_dibayar'].startswith(hari_ini):
-                lunas_hari_ini.append(row)
-            else:
-                lunas_lama.append(row)
-
-    return render_template("transaksi.html", belum=belum_lunas, hari_ini=lunas_hari_ini, lama=lunas_lama)
-
-@app.route('/update', methods=['POST'])
-def update():
-    id_transaksi = request.form['id']
-    tanggal_bayar = datetime.now().strftime("%d-%m-%Y %H:%M")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE transaksi
-        SET status_pembayaran = 'Sudah Lunas',
-            tanggal_dibayar = ?
-        WHERE id = ?
-    """, (tanggal_bayar, id_transaksi))
-    conn.commit()
-    return redirect('/transaksi')
+@app.route('/update/<int:id>', methods=['GET', 'POST'])
+def update(id):
+    if request.method == 'POST':
+        status = request.form['status']
+        conn = sqlite3.connect('laundry.db')
+        c = conn.cursor()
+        c.execute("UPDATE transaksi SET status=? WHERE id=?", (status, id))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('transaksi'))
+    else:
+        conn = sqlite3.connect('laundry.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM transaksi WHERE id=?", (id,))
+        data = c.fetchone()
+        conn.close()
+        return render_template('update.html', data=data)
 
 if __name__ == '__main__':
     app.run(debug=True)
-@app.route('/')
-def index():
-    return "<h1>Halo dari Flask!</h1>"
